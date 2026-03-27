@@ -141,18 +141,21 @@
                     const newData = snap.data();
                     const localResetId = localStorage.getItem(`last_reset_id_${APP_ID}`);
                     
-                    // RESTRAT LOGIKA PRO DIVÁKY
+                    // --- KRITICKÁ LOGIKA PRO RESTART U DIVÁKA ---
                     if (newData.resetId && newData.resetId !== localResetId) {
+                        // Smazání lokálních dat
                         localStorage.removeItem(`voted_home_${APP_ID}`);
                         localStorage.removeItem(`voted_away_${APP_ID}`);
                         localStorage.removeItem(`session_ticket_${APP_ID}`);
                         localStorage.setItem(`last_reset_id_${APP_ID}`, newData.resetId);
                         
+                        // Resetování stavu v aplikaci
                         hasVotedHome = false;
                         hasVotedAway = false;
                         sessionTicket = null;
-                        winner = null; // Vymaže vítězný kód u diváka
+                        winner = null; 
                         
+                        // Návrat na hlavní obrazovku pokud divák vidí úspěch
                         if (currentView === 'success' || currentView === 'players') {
                             currentView = 'vote';
                         }
@@ -173,7 +176,7 @@
             unsubscribeVotes = onSnapshot(votesRef, (snap) => {
                 votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 
-                // Pokud v databázi nejsou žádné hlasy (po resetu), vynulujeme vítěze i lokálně
+                // Pokud je databáze prázdná, vynutíme vymazání vítěze z UI
                 if (votes.length === 0) {
                     winner = null;
                 }
@@ -228,11 +231,11 @@
             }, 1500);
         };
 
-        // --- KOMPLETNÍ RESTART HLASOVÁNÍ ---
+        // --- FUNKCE PRO KOMPLETNÍ RESTART ---
         window.resetVotes = async () => {
-            if (!confirm("OPRAVDU CHCETE RESTARTOVAT HLASOVÁNÍ?\n\n- Vítezný kód bude okamžitě vymazán.\n- Smažou se všechna data o aktuálních hlasech z databáze.\n- Všem divákům se znovu povolí hlasování pro domácí i hosty.")) return;
+            if (!confirm("OPRAVDU CHCETE RESTARTOVAT HLASOVÁNÍ?\n\n- Smažou se všechny hlasy v databázi.\n- Vítezný kód zmizí.\n- Všem divákům se okamžitě uvolní možnost znovu hlasovat.")) return;
             
-            // 1. Okamžitý lokální reset adminova stavu diváka
+            // 1. Okamžitý lokální reset pro administrátora
             winner = null;
             votes = [];
             hasVotedHome = false;
@@ -241,17 +244,16 @@
             localStorage.removeItem(`voted_home_${APP_ID}`);
             localStorage.removeItem(`voted_away_${APP_ID}`);
             localStorage.removeItem(`session_ticket_${APP_ID}`);
-            
-            render(); // Vizuální vyčištění hned po kliknutí
+            render();
 
             try {
-                // 2. Vygenerování nového ID soutěže (vynutí reset u všech připojených klientů)
+                // 2. Generování nového ID restartu (informuje všechny diváky ke smazání jejich kódu)
                 const newResetId = "reset-" + Date.now();
                 settings.resetId = newResetId;
                 localStorage.setItem(`last_reset_id_${APP_ID}`, newResetId);
                 await saveSettings();
 
-                // 3. Odstranění dokumentů s hlasy z databáze
+                // 3. Smazání všech dokumentů s hlasy v databázi
                 const votesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'votes');
                 const snap = await getDocs(votesCol);
                 
@@ -261,6 +263,8 @@
                     await batch.commit(); 
                 }
                 
+                // Ujištění se, že vítěz je null i po synchronizaci
+                winner = null;
                 render();
             } catch (e) { 
                 console.error(e);
@@ -319,6 +323,7 @@
 
         function renderVoteView() {
             let ticketHtml = '';
+            // Kód se zobrazí JEN pokud je odhlasováno a existuje sessionTicket
             if (hasVotedHome && hasVotedAway && sessionTicket) {
                 ticketHtml = `
                     <div class="mb-8 p-6 bg-blue-50 border border-blue-100 rounded-[2rem] flex flex-col items-center gap-2 animate-in shadow-sm">
@@ -364,7 +369,7 @@
             return `<div class="max-w-2xl mx-auto space-y-4">
                 <div class="bg-white rounded-2xl shadow-xl p-10 text-center border-t-8 border-blue-600">
                     <div class="bg-green-100 text-green-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="check-circle-2" class="w-12 h-12"></i></div>
-                    <h2 class="text-3xl font-black mb-2 text-slate-900 uppercase">Hlasování hotovo!</h2>
+                    <h2 class="text-3xl font-black mb-2 text-slate-900 uppercase">Hlasování dokončeno!</h2>
                     <p class="text-slate-500 mb-10">Děkujeme za tvé hlasy. Zde je tvůj unikátní kód pro slosování o ceny:</p>
                     <div class="bg-slate-50 border-2 border-dashed rounded-[2.5rem] p-10 relative overflow-hidden">
                         <div class="absolute top-0 right-0 p-4 bg-blue-600 text-white rounded-bl-3xl shadow-lg"><i data-lucide="ticket" class="w-6 h-6"></i></div>
@@ -372,7 +377,6 @@
                         <div class="text-6xl font-black text-blue-600 tracking-[0.1em] font-mono select-all">${sessionTicket}</div>
                     </div>
                     <p class="text-sm text-slate-400 mt-10 italic">Pořiď si screenshot lístku pro případ výhry!</p>
-                    
                     <div class="mt-12 pt-8 border-t border-slate-50">
                         <button onclick="setView('vote')" class="text-blue-600 font-black text-xs uppercase tracking-widest flex items-center gap-2 mx-auto hover:gap-3 transition-all">
                             <i data-lucide="chevron-left" class="w-4 h-4"></i> Zpět na přehled
@@ -400,7 +404,6 @@
                       `<p class="text-slate-400 font-bold">Připraveno k losování.</p>`}
                 </div>
                 <button onclick="drawWinner()" class="w-full mt-6 py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 uppercase tracking-widest text-lg flex items-center justify-center gap-3 shadow-xl ${votes.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}"><i data-lucide="refresh-cw" class="w-6 h-6"></i> LOSOVAT</button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-8">${renderStatsCard('away', sa, m)}${renderStatsCard('home', sh, m)}</div>
-                
                 <button onclick="resetVotes()" class="block mx-auto px-6 py-2 bg-red-50 text-red-500 border border-red-100 rounded-xl font-black uppercase text-[10px] hover:bg-red-600 hover:text-white transition-all shadow-sm">Restartovat vše pro novou soutěž</button>
                 </div>` : renderAdminSettings()}</div>`;
         }
