@@ -54,8 +54,6 @@
 
         // ==========================================================
         // 1. FIREBASE KONFIGURACE
-        // DŮLEŽITÉ: Pokud zde uvidíte "SEM-VLOŽTE-API-KEY", web na GitHubu NEBUDE fungovat.
-        // Musíte sem vložit skutečné klíče z Firebase Console -> Project Settings.
         // ==========================================================
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "AIzaSyC3-hhGrBa-BZ7nMc6bQ-2ujPtjzjsfrSo",
@@ -67,7 +65,7 @@
             measurementId: "G-RPKXK5CK8B"
         };
 
-        
+    
         const ADMIN_PASSWORD_HASH = "46cab7d0a7cb198437be0c529583e6f226bd978121737ed6a1632fdf99ac3510"; 
 
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'volleyball-vote';
@@ -75,7 +73,7 @@
         const DEFAULT_SETTINGS = {
             mainLogo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/ZCU_logo.svg/1024px-ZCU_logo.svg.png",
             mainTitle: "ZCU VOLEJBAL PLZEŇ",
-            home: { name: "ZČU Plzeň", logo: null, players: [{ id: 'h1', name: 'Marek Novotný' }] },
+            home: { name: "ZČU Plzeň", logo: null, players: [{ id: 'h1', name: 'Hráč ZČU 1' }] },
             away: { name: "Hostující tým", logo: null, players: [{ id: 'a1', name: 'Hráč Hostů 1' }] }
         };
 
@@ -102,13 +100,11 @@
         }
 
         async function init() {
-            // Prvotní vykreslení, aby uživatel neviděl jen spinner
             render();
 
-            // Kontrola, zda jsou vyplněny klíče
             if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "SEM-VLOŽTE-API-KEY") {
                 if (typeof __firebase_config === 'undefined') {
-                    showError("CHYBA: V souboru index.html není vyplněna sekce 'firebaseConfig'. Web se nemůže připojit k databázi.");
+                    showError("Doplňte konfiguraci Firebase v kódu.");
                     return;
                 }
             }
@@ -120,9 +116,7 @@
 
                 onAuthStateChanged(auth, (u) => {
                     user = u;
-                    if (u) {
-                        subscribeToData();
-                    }
+                    if (u) subscribeToData();
                 });
 
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -132,7 +126,7 @@
                 }
             } catch (err) { 
                 console.error(err);
-                showError("Chyba při inicializaci Firebase. Zkontrolujte API klíče.");
+                showError("Chyba připojení k serveru.");
             }
 
             if (hasVotedHome && hasVotedAway) currentView = 'success';
@@ -148,14 +142,10 @@
                     settings = snap.data(); 
                     render(); 
                 } else { 
-                    setDoc(settingsRef, DEFAULT_SETTINGS).catch(e => {
-                        if (e.code === 'permission-denied') showError("CHYBA: Databáze nepovolila zápis. Zkontrolujte záložku Rules ve Firebase.");
-                    });
+                    setDoc(settingsRef, DEFAULT_SETTINGS).catch(console.error); 
                 }
             }, (err) => {
-                if (err.code === 'permission-denied') {
-                    showError("Přístup k databázi byl odepřen. Zkontrolujte Rules (Pravidla) v Firebase Console.");
-                }
+                if (err.code === 'permission-denied') showError("Chyba oprávnění v databázi.");
             });
 
             const votesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'votes');
@@ -165,7 +155,6 @@
             });
         }
 
-        // --- GLOBÁLNÍ FUNKCE ---
         window.setView = (v) => { currentView = v; render(); };
         window.selectTeam = (teamId) => { selectedTeamId = teamId; currentView = 'players'; render(); };
         window.selectPlayer = (playerId, name) => { selectedPlayer = { id: playerId, name }; render(); };
@@ -188,7 +177,7 @@
                 selectedPlayer = null; selectedTeamId = null;
                 currentView = (hasVotedHome && hasVotedAway) ? 'success' : 'vote';
                 render();
-            } catch (err) { showError("Nepodařilo se odeslat hlas. Zkontrolujte připojení."); }
+            } catch (err) { showError("Nepodařilo se odeslat hlas."); }
         };
 
         window.handleAdminLogin = async (e) => {
@@ -211,7 +200,7 @@
         };
 
         window.resetVotes = async () => {
-            if (!confirm("Smazat všechny hlasy?")) return;
+            if (!confirm("Smazat vše?")) return;
             try {
                 const batch = writeBatch(db);
                 const snap = await getDocs(collection(db, 'artifacts', APP_ID, 'public', 'data', 'votes'));
@@ -252,9 +241,12 @@
             titleDisplay.innerText = settings.mainTitle;
             logoContainer.innerHTML = `<img src="${settings.mainLogo}" class="max-w-full max-h-full object-contain p-1">`;
             
-            if (currentView === 'vote') adminBtnContainer.innerHTML = `<button onclick="setView('admin-login')" class="text-slate-300 hover:text-blue-600 p-2"><i data-lucide="lock" class="w-5 h-5"></i></button>`;
-            else if (currentView.startsWith('admin')) adminBtnContainer.innerHTML = `<button onclick="setView('vote')" class="flex items-center gap-2 text-sm font-medium text-slate-500 p-2"><i data-lucide="log-out" class="w-4 h-4"></i> Zpět</button>`;
-            else adminBtnContainer.innerHTML = '';
+            // MODIFIKACE: Zámeček se nyní zobrazuje vždy, pokud nejsme v admin sekci
+            if (currentView.startsWith('admin')) {
+                adminBtnContainer.innerHTML = `<button onclick="setView('vote')" class="flex items-center gap-2 text-sm font-medium text-slate-500 p-2"><i data-lucide="log-out" class="w-4 h-4"></i> Zpět</button>`;
+            } else {
+                adminBtnContainer.innerHTML = `<button onclick="setView('admin-login')" class="text-slate-300 hover:text-blue-600 p-2"><i data-lucide="lock" class="w-5 h-5"></i></button>`;
+            }
 
             let html = '';
             if (currentView === 'vote') html = renderVoteView();
@@ -289,7 +281,7 @@
 
         function renderSuccessView() {
             return `<div class="max-w-2xl mx-auto space-y-4"><div class="bg-white rounded-2xl shadow-xl p-10 text-center border-t-8 border-blue-600"><div class="bg-green-100 text-green-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="check-circle-2" class="w-12 h-12"></i></div><h2 class="text-3xl font-black mb-2 text-slate-900 uppercase">Hlasování hotovo!</h2><p class="text-slate-500 mb-10">Děkujeme za tvé hlasy. Zde je tvůj unikátní kód pro slosování o ceny:</p>
-                <div class="bg-slate-50 border-2 border-dashed rounded-[2.5rem] p-10 relative overflow-hidden"><div class="absolute top-0 right-0 p-4 bg-blue-600 text-white rounded-bl-3xl shadow-lg"><i data-lucide="ticket" class="w-6 h-6"></i></div><div class="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4">Slosovatelný lístek</div><div class="text-6xl font-black text-blue-600 tracking-[0.1em] font-mono">${sessionTicket}</div></div><p class="text-sm text-slate-400 mt-10 italic">Pořiď si screenshot lístku!</p></div></div>`;
+                <div class="bg-slate-50 border-2 border-dashed rounded-[2.5rem] p-10 relative overflow-hidden"><div class="absolute top-0 right-0 p-4 bg-blue-600 text-white rounded-bl-3xl shadow-lg"><i data-lucide="ticket" class="w-6 h-6"></i></div><div class="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4">Slosovatelný lístek</div><div class="text-6xl font-black text-blue-600 tracking-[0.1em] font-mono">${sessionTicket}</div></div><p class="text-sm text-slate-400 mt-10 italic">Pořiď si screenshot lístku pro případ výhry!</p></div></div>`;
         }
 
         function renderAdminLoginView() {
@@ -304,7 +296,7 @@
                 <button onclick="window.setAdminTab('results')" class="flex-1 py-3 rounded-xl ${adminTab === 'results' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}">VÝSLEDKY</button>
                 <button onclick="window.setAdminTab('teams')" class="flex-1 py-3 rounded-xl ${adminTab === 'teams' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}">NASTAVENÍ</button></div>
                 ${adminTab === 'results' ? `<div class="space-y-8"><div class="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-8 border-2 border-blue-500 bg-blue-50/20 text-center"><h3 class="font-black text-xl mb-6 flex items-center justify-center gap-3 text-blue-900"><i data-lucide="gift" class="w-6 h-6"></i> SLOSOVÁNÍ O CENY</h3>
-                <div class="bg-white rounded-3xl p-8 border min-h-[200px] flex flex-col items-center justify-center relative">${isDrawing ? `<i data-lucide="refresh-cw" class="w-12 h-12 animate-spin text-blue-600"></i>` : winner ? `<div class="animate-in zoom-in"><p class="text-xs font-black text-slate-400 uppercase mb-4">VÍTĚZNÝ KÓD</p><div class="text-7xl font-black text-blue-600 mb-4 font-mono tracking-tighter">${winner.ticketId}</div><p class="text-lg font-bold text-slate-700">Favorit: ${winner.playerName}</p></div>` : `<p class="text-slate-400 font-bold">Připraveno k losování.</p>`}</div>
+                <div class="bg-white rounded-3xl p-8 border min-h-[200px] flex flex-col items-center justify-center relative">${isDrawing ? `<i data-lucide="refresh-cw" class="w-12 h-12 animate-spin text-blue-600"></i>` : winner ? `<div class="animate-in zoom-in"><p class="text-xs font-black text-slate-400 uppercase mb-4">VÍTĚZNÝ KÓD</p><div class="text-7xl font-black text-blue-600 mb-4 font-mono tracking-tighter">${winner.ticketId}</div><p class="text-lg font-bold text-slate-700">Favorit výherce: ${winner.playerName}</p></div>` : `<p class="text-slate-400 font-bold">Připraveno k losování.</p>`}</div>
                 <button onclick="drawWinner()" class="w-full mt-6 py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 uppercase tracking-widest text-lg flex items-center justify-center gap-3 shadow-xl"><i data-lucide="refresh-cw" class="w-6 h-6"></i> LOSOVAT</button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-8">${renderStatsCard('away', sa, m)}${renderStatsCard('home', sh, m)}</div><button onclick="resetVotes()" class="block mx-auto text-red-500 font-bold uppercase text-xs hover:underline mt-8">Resetovat všechny hlasy</button></div>` : renderAdminSettings()}</div>`;
         }
 
